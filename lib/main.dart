@@ -19,7 +19,7 @@ import 'screens/registration_screen.dart';
 import 'screens/otp_verification_screen.dart';
 import 'screens/otp_input_screen.dart';
 import 'screens/login_screen.dart';
-
+//added by saravanan
 // 🔔 Firebase Background Handler
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
