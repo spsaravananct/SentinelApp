@@ -50,20 +50,22 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyDn_1QozVn8b7-Msfls5cjKFV5IctxvlDQ',
-    appId: '1:471625698573:android:57da9a2d7fbafe010b3444',
-    messagingSenderId: '471625698573',
-    projectId: 'mysentinel-7f87b',
-    storageBucket: 'mysentinel-7f87b.firebasestorage.app',
+    apiKey: 'AIzaSyAv7-a2UiZTvpaeIMyLtHFNmWlGMbNyLKc',
+    appId: '1:648968745517:android:4dccb83493edb24ceefea4',
+    messagingSenderId: '648968745517',
+    projectId: 'mysentinal',
+    storageBucket: 'mysentinal.appspot.com',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyBSe1joI_utxYdN4aculWHc-PD1b-KoYt0',
-    appId: '1:471625698573:ios:f815d789f0e6f81a0b3444',
-    messagingSenderId: '471625698573',
-    projectId: 'mysentinel-7f87b',
-    storageBucket: 'mysentinel-7f87b.firebasestorage.app',
-    iosBundleId: 'com.example.testing2',
+    apiKey: 'AIzaSyDzVryR6eOoCrk0V96VP4gt-ITWn_Rri28',
+    appId: '1:648968745517:ios:30fc888d5781b8bdeefea4',
+    messagingSenderId: '648968745517',
+    projectId: 'mysentinal',
+    storageBucket: 'mysentinal.appspot.com',
+    androidClientId: '648968745517-6li61tvl0r1rleahbs0jie5bm7ae1vc7.apps.googleusercontent.com',
+    iosClientId: '648968745517-ulq1mu5n1avti7ufd9926qj1kk6o5vkf.apps.googleusercontent.com',
+    iosBundleId: 'com.technosphere.mysentinel',
   );
 
 }

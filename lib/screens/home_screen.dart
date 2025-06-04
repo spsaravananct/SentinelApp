@@ -194,7 +194,7 @@ class HomeMapBody extends StatelessWidget {
                         onTap: () {
                           Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (context) => const EmergencyContactsScreen()),
+                            MaterialPageRoute(builder: (context) => EmergencyContactsScreen()),
                           );
                         },
                         child: const Text("See more", style: TextStyle(color: Colors.blue)),

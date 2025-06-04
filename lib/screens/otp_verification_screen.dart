@@ -1,11 +1,14 @@
-import 'package:firebase_auth/firebase_auth.dart' show FirebaseAuth, PhoneAuthCredential, PhoneAuthProvider, UserCredential;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:crypto/crypto.dart';
+import 'dart:convert';
+import 'dart:math';
 
 class OTPVerificationScreen extends StatefulWidget {
-  final String verificationId;
+  final String? verificationId; // Make this optional and nullable
 
-  const OTPVerificationScreen({super.key, required this.verificationId});
+  const OTPVerificationScreen({Key? key, this.verificationId}) : super(key: key);
 
   @override
   State<OTPVerificationScreen> createState() => _OTPVerificationScreenState();
@@ -16,6 +19,10 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   String _selectedCountryCode = '+1';
   bool _isLoading = false;
 
+  // Firestore instance
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  // List of common country codes
   final List<Map<String, String>> _countryCodes = [
     {'code': '+1', 'country': 'US', 'flag': '🇺🇸'},
     {'code': '+91', 'country': 'IN', 'flag': '🇮🇳'},
@@ -28,6 +35,75 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     {'code': '+55', 'country': 'BR', 'flag': '🇧🇷'},
     {'code': '+61', 'country': 'AU', 'flag': '🇦🇺'},
   ];
+
+  // Generate a 6-digit OTP
+  String _generateOTP() {
+    Random random = Random();
+    return (100000 + random.nextInt(900000)).toString();
+  }
+
+  // Create verification ID using phone number and timestamp
+  String _createVerificationId(String phoneNumber) {
+    String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+    String data = '$phoneNumber$timestamp';
+    var bytes = utf8.encode(data);
+    var digest = sha256.convert(bytes);
+    return digest.toString().substring(0, 16);
+  }
+
+  // Store OTP data in Firestore
+  Future<void> _storeOTPInFirestore({
+    required String phoneNumber,
+    required String otp,
+    required String verificationId,
+  }) async {
+    try {
+      await _firestore.collection('otp_verifications').doc(verificationId).set({
+        'phoneNumber': phoneNumber,
+        'otp': otp,
+        'verificationId': verificationId,
+        'createdAt': FieldValue.serverTimestamp(),
+        'expiresAt': Timestamp.fromDate(
+          DateTime.now().add(const Duration(minutes: 5)), // OTP expires in 5 minutes
+        ),
+        'isVerified': false,
+        'attempts': 0,
+      });
+    } catch (e) {
+      throw Exception('Failed to store OTP data: $e');
+    }
+  }
+
+  // Check if phone number already exists and handle accordingly
+  Future<void> _handleExistingUser(String phoneNumber) async {
+    try {
+      QuerySnapshot existingUser = await _firestore
+          .collection('users')
+          .where('phoneNumber', isEqualTo: phoneNumber)
+          .limit(1)
+          .get();
+
+      if (existingUser.docs.isNotEmpty) {
+        // Update last login attempt
+        await _firestore
+            .collection('users')
+            .doc(existingUser.docs.first.id)
+            .update({
+          'lastOtpRequest': FieldValue.serverTimestamp(),
+        });
+      } else {
+        // Create new user document
+        await _firestore.collection('users').add({
+          'phoneNumber': phoneNumber,
+          'createdAt': FieldValue.serverTimestamp(),
+          'lastOtpRequest': FieldValue.serverTimestamp(),
+          'isPhoneVerified': false,
+        });
+      }
+    } catch (e) {
+      throw Exception('Failed to handle user data: $e');
+    }
+  }
 
   Future<void> _sendOTP() async {
     final phoneNumber = _phoneController.text.trim();
@@ -47,14 +123,33 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     });
 
     try {
-      await Future.delayed(const Duration(seconds: 2));
-
-      final verificationId = 'mock_verification_id_${DateTime.now().millisecondsSinceEpoch}';
       final fullPhoneNumber = '$_selectedCountryCode$phoneNumber';
+
+      // Generate OTP and verification ID
+      final otp = _generateOTP();
+      final verificationId = _createVerificationId(fullPhoneNumber);
+
+      // Handle user data in Firestore
+      await _handleExistingUser(fullPhoneNumber);
+
+      // Store OTP data in Firestore
+      await _storeOTPInFirestore(
+        phoneNumber: fullPhoneNumber,
+        otp: otp,
+        verificationId: verificationId,
+      );
+
+      // Simulate SMS sending delay
+      await Future.delayed(const Duration(seconds: 2));
 
       if (mounted) {
         _showSnackBar('OTP sent successfully!', Colors.green);
 
+        // Debug: Print the verification ID and OTP for testing
+        debugPrint('Generated Verification ID: $verificationId');
+        debugPrint('Generated OTP: $otp');
+
+        // Navigate to OTP input screen with phone number and verification ID
         Navigator.pushNamed(
           context,
           '/otp-input',
@@ -67,6 +162,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     } catch (e) {
       if (mounted) {
         _showSnackBar('Failed to send OTP. Please try again.', Colors.red);
+        debugPrint('Error sending OTP: $e');
       }
     } finally {
       if (mounted) {
@@ -77,8 +173,134 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     }
   }
 
+  // Method to resend OTP with existing verification ID
+  Future<String> resendOTP(String phoneNumber, {String? existingVerificationId}) async {
+    try {
+      final otp = _generateOTP();
+      String verificationId;
+
+      if (existingVerificationId != null) {
+        // Use existing verification ID for resend
+        verificationId = existingVerificationId;
+      } else {
+        // Create new verification ID if none provided
+        verificationId = _createVerificationId(phoneNumber);
+      }
+
+      await _storeOTPInFirestore(
+        phoneNumber: phoneNumber,
+        otp: otp,
+        verificationId: verificationId,
+      );
+
+      _showSnackBar('OTP resent successfully!', Colors.green);
+
+      // Debug: Print the verification ID and OTP for testing
+      debugPrint('Resent Verification ID: $verificationId');
+      debugPrint('Resent OTP: $otp');
+
+      return verificationId;
+    } catch (e) {
+      _showSnackBar('Failed to resend OTP. Please try again.', Colors.red);
+      debugPrint('Error resending OTP: $e');
+      rethrow;
+    }
+  }
+
+  // Method to verify OTP (to be used in OTP input screen)
+  static Future<Map<String, dynamic>> verifyOTP({
+    required String verificationId,
+    required String enteredOTP,
+    required FirebaseFirestore firestore,
+  }) async {
+    try {
+      debugPrint('Verifying OTP with ID: $verificationId');
+      debugPrint('Entered OTP: $enteredOTP');
+
+      DocumentSnapshot otpDoc = await firestore
+          .collection('otp_verifications')
+          .doc(verificationId)
+          .get();
+
+      if (!otpDoc.exists) {
+        debugPrint('OTP document does not exist');
+        return {'success': false, 'message': 'Invalid verification code'};
+      }
+
+      Map<String, dynamic> data = otpDoc.data() as Map<String, dynamic>;
+      debugPrint('OTP document data: $data');
+
+      // Check if OTP is expired
+      Timestamp expiresAt = data['expiresAt'];
+      if (DateTime.now().isAfter(expiresAt.toDate())) {
+        debugPrint('OTP has expired');
+        return {'success': false, 'message': 'OTP has expired'};
+      }
+
+      // Check if already verified
+      if (data['isVerified'] == true) {
+        debugPrint('OTP already verified');
+        return {'success': false, 'message': 'OTP already used'};
+      }
+
+      // Check attempts
+      int attempts = data['attempts'] ?? 0;
+      if (attempts >= 3) {
+        debugPrint('Too many attempts');
+        return {'success': false, 'message': 'Too many failed attempts'};
+      }
+
+      // Increment attempts
+      await firestore
+          .collection('otp_verifications')
+          .doc(verificationId)
+          .update({'attempts': attempts + 1});
+
+      // Verify OTP
+      String storedOTP = data['otp'];
+      debugPrint('Stored OTP: $storedOTP');
+
+      if (storedOTP == enteredOTP) {
+        // Mark as verified
+        await firestore
+            .collection('otp_verifications')
+            .doc(verificationId)
+            .update({
+          'isVerified': true,
+          'verifiedAt': FieldValue.serverTimestamp(),
+        });
+
+        // Update user verification status
+        String phoneNumber = data['phoneNumber'];
+        QuerySnapshot userQuery = await firestore
+            .collection('users')
+            .where('phoneNumber', isEqualTo: phoneNumber)
+            .limit(1)
+            .get();
+
+        if (userQuery.docs.isNotEmpty) {
+          await firestore
+              .collection('users')
+              .doc(userQuery.docs.first.id)
+              .update({
+            'isPhoneVerified': true,
+            'verifiedAt': FieldValue.serverTimestamp(),
+          });
+        }
+
+        debugPrint('OTP verification successful');
+        return {'success': true, 'message': 'Phone number verified successfully'};
+      }
+
+      debugPrint('OTP verification failed - incorrect OTP');
+      return {'success': false, 'message': 'Incorrect OTP'};
+    } catch (e) {
+      debugPrint('Error verifying OTP: $e');
+      return {'success': false, 'message': 'Verification failed. Please try again.'};
+    }
+  }
+
   void _showSnackBar(String message, Color backgroundColor) {
-    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -96,33 +318,30 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const SizedBox(height: 40),
+              const SizedBox(height: 80),
+
+              // Title
               const Text(
                 'Enter your phone number',
                 style: TextStyle(
-                  fontSize: 22,
+                  fontSize: 24,
                   fontWeight: FontWeight.bold,
                   color: Colors.black,
                 ),
                 textAlign: TextAlign.center,
               ),
+
               const SizedBox(height: 16),
+
+              // Subtitle
               const Text(
-                'We will send an OTP to verify your number',
+                'We Will send an OTP to verify your\nnumber',
                 style: TextStyle(
                   fontSize: 16,
                   color: Colors.grey,
@@ -130,25 +349,33 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 60),
+
+              const SizedBox(height: 80),
+
+              // Phone number input container
               Container(
                 decoration: BoxDecoration(
                   color: const Color(0xFFF7F8F8),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Colors.grey.withAlpha((0.2 * 255).toInt()),
-                    width: 1,
-                  ),
                 ),
                 child: Row(
                   children: [
+                    // Country code dropdown
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
                           value: _selectedCountryCode,
-                          icon: const Icon(Icons.keyboard_arrow_down, color: Colors.grey, size: 20),
-                          style: const TextStyle(fontSize: 16, color: Colors.black, fontWeight: FontWeight.w500),
+                          icon: const Icon(
+                            Icons.keyboard_arrow_down,
+                            color: Colors.grey,
+                            size: 20,
+                          ),
+                          style: const TextStyle(
+                            fontSize: 16,
+                            color: Colors.black,
+                            fontWeight: FontWeight.w500,
+                          ),
                           dropdownColor: Colors.white,
                           onChanged: (String? newValue) {
                             if (newValue != null) {
@@ -157,31 +384,46 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                               });
                             }
                           },
-                          items: _countryCodes.map<DropdownMenuItem<String>>((Map<String, String> country) {
-                            return DropdownMenuItem<String>(
-                              value: country['code'],
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(country['flag']!, style: const TextStyle(fontSize: 16)),
-                                  const SizedBox(width: 8),
-                                  Text(country['code']!),
-                                ],
-                              ),
-                            );
-                          }).toList(),
+                          items: _countryCodes.map<DropdownMenuItem<String>>(
+                                (Map<String, String> country) {
+                              return DropdownMenuItem<String>(
+                                value: country['code'],
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      country['flag']!,
+                                      style: const TextStyle(fontSize: 16),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(country['code']!),
+                                  ],
+                                ),
+                              );
+                            },
+                          ).toList(),
                         ),
                       ),
                     ),
+
+                    // Divider
                     Container(
                       width: 1,
                       height: 30,
-                      color: Colors.grey.withAlpha((0.3 * 255).toInt()),
+                      color: Colors.grey.withOpacity(0.3),
                     ),
+
+                    // Phone icon
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: Icon(Icons.phone_outlined, color: Colors.grey, size: 20),
+                      child: Icon(
+                        Icons.phone_outlined,
+                        color: Colors.grey,
+                        size: 20,
+                      ),
                     ),
+
+                    // Phone number input
                     Expanded(
                       child: TextField(
                         controller: _phoneController,
@@ -190,12 +432,21 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                           FilteringTextInputFormatter.digitsOnly,
                           LengthLimitingTextInputFormatter(15),
                         ],
-                        style: const TextStyle(fontSize: 16, color: Colors.black),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          color: Colors.black,
+                        ),
                         decoration: const InputDecoration(
                           hintText: 'Phone Number',
-                          hintStyle: TextStyle(color: Colors.grey, fontSize: 16),
+                          hintStyle: TextStyle(
+                            color: Colors.grey,
+                            fontSize: 16,
+                          ),
                           border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(horizontal: 0, vertical: 16),
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 0,
+                            vertical: 16,
+                          ),
                         ),
                         onSubmitted: (_) => _sendOTP(),
                       ),
@@ -203,31 +454,42 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                   ],
                 ),
               ),
+
               const Spacer(),
+
+              // Send OTP Button
               Padding(
                 padding: const EdgeInsets.only(bottom: 40),
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _sendOTP,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF4285F4),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 18),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
-                    elevation: 0,
-                    disabledBackgroundColor: const Color(0xFF4285F4).withAlpha((0.6 * 255).toInt()),
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _sendOTP,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF4285F4),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(27),
+                      ),
+                      elevation: 0,
+                      disabledBackgroundColor: const Color(0xFF4285F4).withOpacity(0.6),
                     ),
-                  )
-                      : const Text(
-                    'Send OTP',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    child: _isLoading
+                        ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                        : const Text(
+                      'Send OTP',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -242,26 +504,5 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   void dispose() {
     _phoneController.dispose();
     super.dispose();
-  }
-}
-
-void verifyOTP(String smsCode, String verificationId, BuildContext context) async {
-  try {
-    PhoneAuthCredential credential = PhoneAuthProvider.credential(
-      verificationId: verificationId,
-      smsCode: smsCode,
-    );
-
-    UserCredential userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
-
-    if (userCredential.user != null) {
-      // Success: Navigate to Home or Dashboard
-    }
-  } catch (e) {
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('OTP verification failed: ${e.toString()}')),
-      );
-    }
   }
 }

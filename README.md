@@ -1,4 +1,4 @@
-# sentinelapp
+# mysentinel
 
 A new Flutter project.
 

@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // Added to store the flag
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Import individual permission screens
 import 'camera_permission_screen.dart';
 import 'mic_permission_screen.dart';
 import 'location_permission_screen.dart';
+ // Add this import
 // Optionally add notification_permission_screen.dart if using Firebase Messaging
 
 class PermissionFlow extends StatefulWidget {
@@ -25,7 +26,7 @@ class _PermissionFlowState extends State<PermissionFlow> {
     _permissionScreens = [
           (onNext) => CameraPermissionScreen(onNext: onNext),
           (onNext) => MicPermissionScreen(onNext: onNext),
-          (onNext) => LocationPermissionScreen(onNext: onNext),
+          (onNext) => LocationPermissionScreen(onNext: onNext), // Added contacts permission
       // Add more permission screens here, e.g. NotificationsPermissionScreen(onNext: onNext),
     ];
   }
@@ -40,7 +41,9 @@ class _PermissionFlowState extends State<PermissionFlow> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('permissions_given', true);
 
-      Navigator.of(context).pushReplacementNamed('/home');
+      if (mounted) {
+        Navigator.of(context).pushReplacementNamed('/home');
+      }
     }
   }
 

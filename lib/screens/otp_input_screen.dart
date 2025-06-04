@@ -1,12 +1,10 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class OTPInputScreen extends StatefulWidget {
-  final String verificationId;
-
-  const OTPInputScreen({super.key, required this.verificationId});
+  const OTPInputScreen({super.key});
 
   @override
   State<OTPInputScreen> createState() => _OTPInputScreenState();
@@ -22,13 +20,12 @@ class _OTPInputScreenState extends State<OTPInputScreen> {
   @override
   void initState() {
     super.initState();
-    _verificationId = widget.verificationId;
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final args = ModalRoute.of(context)?.settings.arguments as Map<String, String>?;
       if (args != null) {
         setState(() {
           _phoneNumber = args['phoneNumber'] ?? '';
+          _verificationId = args['verificationId'] ?? '';
         });
       }
     });
@@ -47,70 +44,111 @@ class _OTPInputScreenState extends State<OTPInputScreen> {
 
   String get _otpCode => _controllers.map((c) => c.text).join();
 
-  void _onOtpDigitChanged(String value, int index) {
-    if (value.isNotEmpty && index < 5) {
-      _focusNodes[index + 1].requestFocus();
-    }
-  }
-
-  void _onBackspace(int index) {
-    if (index > 0 && _controllers[index].text.isEmpty) {
-      _focusNodes[index - 1].requestFocus();
-    }
-  }
-
   Future<void> _verifyOTP() async {
     if (_otpCode.length < 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter the complete OTP'), backgroundColor: Colors.red),
-      );
+      _showSnackBar('Please enter the complete OTP', Colors.red);
+      return;
+    }
+
+    if (_verificationId.isEmpty) {
+      _showSnackBar('Verification ID is missing. Please go back and try again.', Colors.red);
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
-      PhoneAuthCredential credential = PhoneAuthProvider.credential(
+      final result = await _verifyOTPWithFirestore(
         verificationId: _verificationId,
-        smsCode: _otpCode,
+        enteredOTP: _otpCode,
+        phoneNumber: _phoneNumber,
+        firestore: FirebaseFirestore.instance,
       );
 
-      await FirebaseAuth.instance.signInWithCredential(credential);
+      if (result['success']) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('phone_verified', true);
+        await prefs.setString('verified_phone', _phoneNumber);
 
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('phone_verified', true);
-
-      if (mounted) {
-        Navigator.pushReplacementNamed(context, '/permissions');
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invalid OTP. Please try again.'), backgroundColor: Colors.red),
-        );
-        for (var controller in _controllers) {
-          controller.clear();
+        if (mounted) {
+          _showSnackBar(result['message'], Colors.green);
+          await Future.delayed(const Duration(milliseconds: 1000));
+          if (mounted) {
+            Navigator.pushReplacementNamed(context, '/permissions');
+          }
         }
-        _focusNodes[0].requestFocus();
+      } else {
+        _showSnackBar(result['message'], Colors.red);
+        _clearOtpFields();
       }
+    } catch (e) {
+      _showSnackBar('Verification failed. Please try again.', Colors.red);
+      _clearOtpFields();
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _resendOTP() async {
-    // TODO: Implement actual resend logic
+  static Future<Map<String, dynamic>> _verifyOTPWithFirestore({
+    required String verificationId,
+    required String enteredOTP,
+    required String phoneNumber,
+    required FirebaseFirestore firestore,
+  }) async {
+    try {
+      DocumentSnapshot otpDoc = await firestore.collection('otp_verifications').doc(verificationId).get();
+      if (!otpDoc.exists) return {'success': false, 'message': 'Invalid verification code'};
+
+      Map<String, dynamic> data = otpDoc.data() as Map<String, dynamic>;
+
+      if (DateTime.now().isAfter(data['expiresAt'].toDate())) return {'success': false, 'message': 'OTP expired'};
+      if (data['isVerified'] == true) return {'success': false, 'message': 'OTP already used'};
+      int attempts = data['attempts'] ?? 0;
+      if (attempts >= 3) return {'success': false, 'message': 'Too many attempts'};
+
+      await firestore.collection('otp_verifications').doc(verificationId).update({'attempts': attempts + 1});
+
+      if (data['otp'] == enteredOTP) {
+        await firestore.collection('otp_verifications').doc(verificationId).update({
+          'isVerified': true,
+          'verifiedAt': FieldValue.serverTimestamp(),
+        });
+
+        // ✅ **Update phone number in Firestore Users collection**
+        QuerySnapshot userQuery = await firestore
+            .collection('Users')
+            .where('phoneNumber', isEqualTo: '')
+            .limit(1)
+            .get();
+
+        if (userQuery.docs.isNotEmpty) {
+          await firestore.collection('Users').doc(userQuery.docs.first.id).update({
+            'phoneNumber': phoneNumber,
+            'isPhoneVerified': true,
+            'verifiedAt': FieldValue.serverTimestamp(),
+          });
+        }
+
+        return {'success': true, 'message': 'Phone number verified successfully'};
+      }
+
+      return {'success': false, 'message': 'Incorrect OTP'};
+    } catch (e) {
+      return {'success': false, 'message': 'Verification failed'};
+    }
+  }
+
+  void _clearOtpFields() {
+    for (var controller in _controllers) {
+      controller.clear();
+    }
+    _focusNodes[0].requestFocus();
+  }
+
+  void _showSnackBar(String message, Color backgroundColor) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('OTP sent successfully'), backgroundColor: Colors.green),
+      SnackBar(content: Text(message), backgroundColor: backgroundColor),
     );
-  }
-
-  String _getMaskedPhoneNumber() {
-    if (_phoneNumber.length > 4) {
-      return _phoneNumber.substring(0, _phoneNumber.length - 4).replaceAll(RegExp(r'\d'), '*') +
-          _phoneNumber.substring(_phoneNumber.length - 4);
-    }
-    return _phoneNumber;
   }
 
   @override
@@ -127,27 +165,14 @@ class _OTPInputScreenState extends State<OTPInputScreen> {
       ),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               const SizedBox(height: 40),
-              const Text('Enter verification code', textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-              ),
+              const Text('Enter verification code', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black)),
               const SizedBox(height: 16),
-              RichText(
-                textAlign: TextAlign.center,
-                text: TextSpan(
-                  style: const TextStyle(fontSize: 16, color: Colors.grey),
-                  children: [
-                    const TextSpan(text: 'We have sent a 6-digit code to\n'),
-                    TextSpan(text: _getMaskedPhoneNumber(),
-                      style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
-                    ),
-                  ],
-                ),
-              ),
+              const Text('We have sent a 6-digit code to your phone', style: TextStyle(fontSize: 16, color: Colors.grey)),
               const SizedBox(height: 60),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -155,74 +180,36 @@ class _OTPInputScreenState extends State<OTPInputScreen> {
                   return SizedBox(
                     width: 45,
                     height: 55,
-                    child: RawKeyboardListener(
+                    child: TextFormField(
+                      controller: _controllers[index],
                       focusNode: _focusNodes[index],
-                      onKey: (event) {
-                        if (event is RawKeyDownEvent &&
-                            event.logicalKey == LogicalKeyboardKey.backspace &&
-                            _controllers[index].text.isEmpty) {
-                          _onBackspace(index);
-                        }
-                      },
-                      child: TextFormField(
-                        controller: _controllers[index],
-                        textAlign: TextAlign.center,
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                          LengthLimitingTextInputFormatter(1),
-                        ],
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                        decoration: InputDecoration(
-                          filled: true,
-                          fillColor: const Color(0xFFF7F8F8),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                          counterText: '',
-                        ),
-                        onChanged: (value) => _onOtpDigitChanged(value, index),
-                        onTap: () {
-                          _controllers[index].selection = TextSelection.fromPosition(
-                            TextPosition(offset: _controllers[index].text.length),
-                          );
-                        },
+                      textAlign: TextAlign.center,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(1),
+                      ],
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black),
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: const Color(0xFFF7F8F8),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                       ),
                     ),
                   );
                 }),
               ),
               const SizedBox(height: 40),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text("Didn't receive the code? ", style: TextStyle(fontSize: 14, color: Colors.grey)),
-                  GestureDetector(
-                    onTap: _resendOTP,
-                    child: const Text('Resend', style: TextStyle(color: Color(0xFF4285F4), fontWeight: FontWeight.w600)),
-                  ),
-                ],
-              ),
-              const Spacer(),
               Padding(
                 padding: const EdgeInsets.only(bottom: 40),
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _verifyOTP,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF4285F4),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 18),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
-                    elevation: 0,
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _verifyOTP,
+                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF4285F4), foregroundColor: Colors.white),
+                    child: _isLoading ? const CircularProgressIndicator() : const Text('Verify', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                   ),
-                  child: _isLoading
-                      ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                  )
-                      : const Text('Verify', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                 ),
               ),
             ],

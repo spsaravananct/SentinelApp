@@ -1,0 +1,127 @@
+{
+  "project_info": {
+    "project_number": "648968745517",
+    "project_id": "mysentinal",
+    "storage_bucket": "mysentinal.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:648968745517:android:ef42dd927f814975eefea4",
+        "android_client_info": {
+          "package_name": "com.example.sentinelapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "648968745517-f01pac02989g37n6ulit6v9ptjtk4pl7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAv7-a2UiZTvpaeIMyLtHFNmWlGMbNyLKc"
+        },
+        {
+          "current_key": "AIzaSyB69LXUvBS72fgcnM0ryvvUuhsNTz4ByaI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "648968745517-f01pac02989g37n6ulit6v9ptjtk4pl7.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "648968745517-mbjm0a0naua721abtjgarmga1s6d6ekg.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.technosphereinc.mysentinal"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:648968745517:android:32a4e8b35c507c46eefea4",
+        "android_client_info": {
+          "package_name": "com.example.testing2"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "648968745517-f01pac02989g37n6ulit6v9ptjtk4pl7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAv7-a2UiZTvpaeIMyLtHFNmWlGMbNyLKc"
+        },
+        {
+          "current_key": "AIzaSyB69LXUvBS72fgcnM0ryvvUuhsNTz4ByaI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "648968745517-f01pac02989g37n6ulit6v9ptjtk4pl7.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "648968745517-mbjm0a0naua721abtjgarmga1s6d6ekg.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.technosphereinc.mysentinal"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:648968745517:android:4dccb83493edb24ceefea4",
+        "android_client_info": {
+          "package_name": "com.technosphere.mysentinel"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "648968745517-f01pac02989g37n6ulit6v9ptjtk4pl7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAv7-a2UiZTvpaeIMyLtHFNmWlGMbNyLKc"
+        },
+        {
+          "current_key": "AIzaSyB69LXUvBS72fgcnM0ryvvUuhsNTz4ByaI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "648968745517-f01pac02989g37n6ulit6v9ptjtk4pl7.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "648968745517-mbjm0a0naua721abtjgarmga1s6d6ekg.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.technosphereinc.mysentinal"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

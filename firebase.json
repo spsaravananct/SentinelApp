@@ -1,15 +1,1 @@
-{
-  "functions": [
-    {
-      "source": "functions",
-      "codebase": "default",
-      "ignore": [
-        "node_modules",
-        ".git",
-        "firebase-debug.log",
-        "firebase-debug.*.log",
-        "*.local"
-      ]
-    }
-  ]
-}
+{"flutter":{"platforms":{"android":{"default":{"projectId":"mysentinal","appId":"1:648968745517:android:4dccb83493edb24ceefea4","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"mysentinal","configurations":{"android":"1:648968745517:android:4dccb83493edb24ceefea4","ios":"1:648968745517:ios:30fc888d5781b8bdeefea4"}}}}}}
